@@ -175,4 +175,8 @@ FakesAssemblies/
 
 # My custom output files
 *.ign
-TestProgram/TestProgram.cpp
+
+# Project Specific
+Input.txt
+Output.txt
+img/
