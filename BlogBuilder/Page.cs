@@ -33,12 +33,7 @@ namespace BlogBuilder
 
             public void Write(StreamWriter writer)
             {
-                writer.WriteLine("$para = new Paragraph();");
-                if (mText != null)
-                {
-                    PHP.SanitiseWriteLine(writer, "$para->text = '{0}';", false, mText);
-                }
-                writer.WriteLine("$sec->addParagraph($para);");
+                PHP.SanitiseWriteLine(writer, "->addParagraph(new Paragraph('{0}'))", false, mText);
             }
         }
 
@@ -59,14 +54,14 @@ namespace BlogBuilder
 
             public void Write(StreamWriter writer)
             {
-                PHP.SanitiseWriteLine(writer, "$subsec = new SubSection('{0}');", false, mHeader);
+                PHP.SanitiseWriteLine(writer, "->addParagraph((new SubSection('{0}'))", false, mHeader);
 
                 foreach (var item in mPars)
                 {
-                    PHP.SanitiseWriteLine(writer, "$subsec->addLine('{0}');", false, item);
+                    PHP.SanitiseWriteLine(writer, "->addLine('{0}')", false, item);
                 }
 
-                writer.WriteLine("$sec->addParagraph($subsec);");
+                writer.WriteLine(")");
             }
         }
 
@@ -88,21 +83,23 @@ namespace BlogBuilder
 
             public void Write(StreamWriter writer)
             {
+                writer.Write("->addParagraph((new CodeBlock(");
+
                 if (Header != null)
                 {
-                    PHP.SanitiseWriteLine(writer, "$code = new CodeBlock('{0}');", false, Header);
+                    PHP.SanitiseWriteLine(writer, "'{0}'))", false, Header);
                 }
                 else
                 {
-                    writer.WriteLine("$code = new CodeBlock();");
+                    writer.WriteLine("))");
                 }
 
                 foreach (var line in mLines)
                 {
-                    PHP.SanitiseWriteLine(writer, "$code->addLine('{0}');", true, Code.Parse(line, Language));
+                    PHP.SanitiseWriteLine(writer, "->addLine('{0}')", true, Code.Parse(line, Language));
                 }
 
-                writer.WriteLine("$sec->addParagraph($code);");
+                writer.WriteLine(")");
             }
         }
 
@@ -133,15 +130,15 @@ namespace BlogBuilder
 
             public void Write(StreamWriter writer)
             {
-                writer.WriteLine("$list = new ListHTML();");
-                writer.WriteLine("$list->isOrdered = {0};", (ListType == Type.Ordered));
+                writer.WriteLine("->addParagraph((new ListHTML())");
+                writer.WriteLine("->setOrdered({0})", (ListType == Type.Ordered));
 
                 foreach (var item in mItems)
                 {
-                    PHP.SanitiseWriteLine(writer, "$list->addItem('{0}');", false, item);
+                    PHP.SanitiseWriteLine(writer, "->addItem('{0}')", false, item);
                 }
 
-                writer.WriteLine("$sec->addParagraph($list);");
+                writer.WriteLine(')');
             }
         }
 
@@ -164,22 +161,21 @@ namespace BlogBuilder
                 var img = System.Drawing.Image.FromFile(Src);
 
                 var dest = PHP.SanitiseFilename(Src, PHP.FileType.IMAGE);
-                writer.WriteLine("$img = new Image('{0}', {1}, {2});", dest, img.Width, img.Height);
-
-                if (HasAltText)
-                {
-                    writer.WriteLine("$img->setAltText('{0}');", Alt);
-                    writer.WriteLine("$img->setCaption('{0}');", Alt);
-                }
-
-                writer.WriteLine("$imgsec->addImage($img);");
-
                 if (!Directory.Exists("img"))
                 {
                     Directory.CreateDirectory("img");
                 }
 
                 File.Copy(Src, dest, true);
+
+                writer.WriteLine("->addImage((new Image('{0}', {1}, {2}))", dest, img.Width, img.Height);
+
+                if (HasAltText)
+                {
+                    writer.WriteLine("->setAltText('{0}')->setCaption('{0}')", Alt);
+                }
+
+                writer.WriteLine(')');
             }
         }
 
@@ -190,18 +186,22 @@ namespace BlogBuilder
 
             public virtual void Write(StreamWriter writer)
             {
-                writer.WriteLine("$sec = new Section();");
+                writer.Write("$this->content[] = (new Section(");
                 if (Header != null)
                 {
-                    PHP.SanitiseWriteLine(writer, "$sec->heading = '{0}';", false, Header);
+                    PHP.SanitiseWriteLine(writer, "'{0}'))", false, Header);
+                }
+                else
+                {
+                    writer.WriteLine("))");
                 }
 
                 foreach (var item in Contents)
                 {
                     item.Write(writer);
                 }
-                
-                writer.WriteLine("$this->content[] = $sec;");
+
+                writer.WriteLine(";");
             }
         }
 
@@ -209,15 +209,14 @@ namespace BlogBuilder
         {
             public override void Write(StreamWriter writer)
             {
-                writer.WriteLine("$imgsec = new ImageSection();");
-                writer.WriteLine("$imgsec->type = ImageSection::BLOCK;");
+                writer.WriteLine("->addParagraph((new ImageSection(ImageSection::BLOCK))");
 
                 foreach (var item in Contents)
                 {
                     item.Write(writer);
                 }
 
-                writer.WriteLine("$sec->addParagraph($imgsec);");
+                writer.WriteLine(')');
             }
         }
 
@@ -232,6 +231,7 @@ namespace BlogBuilder
             os.WriteLine(" * DESC: {0}", metaData.Description);
             os.WriteLine(" * TAGS: {0}", metaData.Tags);
             os.WriteLine(" */");
+            os.WriteLine();
 
             // Ignoring metadata for the moment
 
