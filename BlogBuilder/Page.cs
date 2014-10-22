@@ -94,9 +94,10 @@ namespace BlogBuilder
                     writer.WriteLine("))");
                 }
 
+                var parser = Code.BeginParse(Language);
                 foreach (var line in mLines)
                 {
-                    PHP.SanitiseWriteLine(writer, "->addLine('{0}')", true, Code.Parse(line, Language));
+                    PHP.SanitiseWriteLine(writer, "->addLine('{0}')", true, parser.InterpretLine(line));
                 }
 
                 writer.WriteLine(")");

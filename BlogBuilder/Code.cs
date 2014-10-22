@@ -8,9 +8,17 @@ namespace BlogBuilder
 {
     class Code
     {
+        public static int WARNING_CODE = 0x100;
+        public static int ERROR_CODE = 0x100;
+
         public enum Language
         {
             NONE, CPP
+        }
+
+        public interface IParser
+        {
+            String InterpretLine(String line);
         }
 
         public static Language FindLanguage(String str)
@@ -23,194 +31,419 @@ namespace BlogBuilder
             return Language.NONE;
         }
 
-        public static String Parse(String str, Language lang)
+        public static IParser BeginParse(Language lang)
         {
             switch (lang)
             {
                 case Language.CPP:
                 default:
-                    return CPP.Parse(str);
+                    return CPP.RetrieveParser();
             }
+        }
+
+        private static int CountTabs(String str)
+        {
+            return str.Count(c => (c == '\t')); // Yergh
         }
 
         private class CPP
         {
-            public static String Parse(String inStr)
+            public static int WARNING_CODE = 0x10;
+            public static int ERROR_CODE = 0x10;
+
+            private enum Type
             {
-                StringBuilder outStr = new StringBuilder();
+                NONE, NAMESPACE, TEMPLATE, TYPENAME, IDENTIFIER, CLASS, VISIBILITY, FUNCTION, QUALIFIER, USING
+            }
 
+            private static void AppendCodeWord(StringBuilder stream, String word, bool leadingSpace = false, bool trailingSpace = true)
+            {
+                if (leadingSpace)
                 {
-                    int lastTab = -1;
-                    int currTab = -1;
-                    int count = 0;
-
-                    while ((currTab = inStr.IndexOf('\t', lastTab + 1)) != -1)
-                    {
-                        lastTab = currTab;
-                        ++count;
-                    }
-
-                    if (count != 0)
-                    {
-                        outStr.Append('\t', count);
-
-                        inStr = inStr.Substring(lastTab + 1);
-                    }
+                    stream.Append(' ');
                 }
 
-                var toks = inStr.Split(' ', '\t');
-                bool inComment = false;
+                stream.AppendFormat("\\<span class=\"code-b\"\\>{0}\\</span\\>", word);
 
-                for (int i = 0; i < toks.Length; ++i)
+                if (trailingSpace)
                 {
-                    if (String.IsNullOrEmpty(toks[i]))
-                    {
-                        outStr.Append("&nbsp;");
-                        continue;
-                    }
+                    stream.Append(' ');
+                }
+            }
 
-                    if (inComment)
-                    {
-                        outStr.AppendFormat("{0} ", toks[i]);
-                        continue;
-                    }
+            private static void AppendVisibility(StringBuilder stream, String word)
+            {
+                stream.AppendFormat("\\<span class=\"code-b\"\\>{0}\\</span\\>: ", word);
+            }
 
-                    if (toks[i].StartsWith("//"))
-                    {
-                        inComment = true;
-                        outStr.AppendFormat("\\<span class=\"code-g\"\\>{0} ", toks[i]);
-                        continue;
-                    }
-
-                    {
-                        int index;
-                        while ((index = toks[i].IndexOf('<')) != -1)
-                        {
-                            Interpret(outStr, toks[i].Substring(0, index), false);
-                            outStr.Append('<');
-                            toks[i] = toks[i].Substring(index + 1);
-                        }
-
-                        while ((index = toks[i].IndexOf('>')) != -1)
-                        {
-                            Interpret(outStr, toks[i].Substring(0, index), false);
-                            outStr.Append('>');
-                            toks[i] = toks[i].Substring(index + 1);
-                        }
-
-                        while ((index = toks[i].IndexOf('(')) != -1)
-                        {
-                            Interpret(outStr, toks[i].Substring(0, index), false);
-                            outStr.Append('(');
-                            toks[i] = toks[i].Substring(index + 1);
-                        }
-
-                        while ((index = toks[i].IndexOf(')')) != -1)
-                        {
-                            Interpret(outStr, toks[i].Substring(0, index), false);
-                            outStr.Append(')');
-                            toks[i] = toks[i].Substring(index + 1);
-                        }
-
-                        while ((index = toks[i].IndexOf(',')) != -1)
-                        {
-                            Interpret(outStr, toks[i].Substring(0, index), false);
-                            outStr.Append(", ");
-                            toks[i] = toks[i].Substring(index + 1);
-                        }
-                    }
-
-                    String[] cpy = new String[toks.Length - i - 1];
-                    Array.Copy(toks, i + 1, cpy, 0, cpy.Length);
-
-                    i += Interpret(outStr, toks[i], strs: cpy);
+            private static void AppendPlain(StringBuilder stream, String word, bool leadingSpace = false, bool trailingSpace = true)
+            {
+                if (leadingSpace)
+                {
+                    stream.Append(' ');
                 }
 
-                if (inComment)
+                stream.Append(word);
+
+                if (trailingSpace)
                 {
-                    outStr.Append("\\</span\\>");
+                    stream.Append(' ');
+                }
+            }
+
+            private static void AppendIdentifier(StringBuilder stream, String word, bool leadingSpace = false, bool trailingSpace = true)
+            {
+                if (leadingSpace)
+                {
+                    stream.Append(' ');
                 }
 
-                return outStr.ToString();
+                stream.AppendFormat("\\<span class=\"code-lb\"\\>{0}\\</span\\>", word);
+
+                if (trailingSpace)
+                {
+                    stream.Append(' ');
+                }
+            }
+
+            private static void AppendPreprocessor(StringBuilder stream, String word)
+            {
+                stream.AppendFormat("\\<span class=\"code-r\"\\>{0}\\</span\\>", word);
+            }
+
+            private static void AppendComments(StringBuilder stream, params String[] words)
+            {
+                stream.Append("\\<span class=\"code-g\"\\>");
+                foreach (var word in words)
+                {
+                    stream.AppendFormat("{0} ", word);
+                }
+                stream.Append("\\</span\\>");
+            }
+
+            private static void AppendUnknown(StringBuilder stream, String word)
+            {
+                stream.AppendFormat("{0} ", word);
             }
 
             /// <summary>
-            /// 
+            /// Check whether a word is a type qualifier, e.g. const
             /// </summary>
-            /// <param name="outStr"></param>
-            /// <param name="str"></param>
-            /// <param name="str2"></param>
-            /// <returns>The number of extra strings consumed</returns>
-            private static int Interpret(StringBuilder outStr, String str, bool inclSpace = true, params String[] strs)
+            /// <param name="word"></param>
+            /// <returns></returns>
+            public static bool IsTypeQualifier(String word)
             {
-                if (String.IsNullOrEmpty(str))
+                switch (word)
                 {
-                    return 0;
-                }
-
-                var suffix = inclSpace ? " " : String.Empty;
-
-                if (str.StartsWith("public"))
-                {
-                    if (str.Length == 6)
-                    {
-                        outStr.Append("\\<span class=\"code-b\"\\>public\\</span\\> ");
-                        return 0;
-                    }
-                    else if (str.Length == 7 && str[6] == ':')
-                    {
-                        outStr.Append("\\<span class=\"code-b\"\\>public\\</span\\>: ");
-                        return 0;
-                    }
-                }
-
-                switch (str)
-                {
-                    case "#pragma":
-                        if (strs.Length != 0)
-                        {
-                            outStr.AppendFormat("\\<span class=\"code-b\"\\>#pragma {0}\\</span\\> ", strs[0]);
-                            return 1;
-                        }
-                        else
-                        {
-                            outStr.Append("\\<span class=\"code-b\"\\>#pragma\\</span\\> ");
-                        }
-                        break;
-                    case "#include":
-                        outStr.AppendFormat("\\<span class=\"code-b\"\\>#include\\</span\\> \\<span class=\"code-r\"\\>{0}\\</span\\> ", strs[0]);
-                        return 1;
-                    case "namespace":
-                    case "typename":
-                        if (strs.Length != 0)
-                        {
-                            outStr.AppendFormat("\\<span class=\"code-b\"\\>{0}\\</span\\> {1} ", str, strs[0]);
-                            return 1;
-                        }
-                        else
-                        {
-                            outStr.AppendFormat("\\<span class=\"code-b\"\\>{0}\\</span\\> ", str);
-                        }
-                        break;
-                    case "class":
-                    case "template":
                     case "const":
-                    case "static":
-                    case "using":
-                        outStr.AppendFormat("\\<span class=\"code-b\"\\>{0}\\</span\\> ", str);
-                        break;
-                    case "int":
-                    case "bool":
-                    case "float":
-                    case "char":
-                        outStr.AppendFormat("\\<span class=\"code-b\"\\>{0}\\</span\\>{1}", str, suffix);
-                        break;
+                        return true;
+
                     default:
-                        outStr.AppendFormat("{0}{1}", str, suffix);
-                        break;
+                        return false;
+                }
+            }
+
+            public static bool IsPrimitive(String word)
+            {
+                switch (word)
+                {
+                    case "bool":
+                    case "int":
+                    case "float":
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+
+            private class CPPState : IParser
+            {
+                private Type mLastToken = Type.NONE;
+                private int mTemplateDepth = 0;
+                private bool mInFunctionBrackets = false;
+                private bool mInPragma = false;
+                private bool mInLineComments = false;
+                private bool mInBlockComments = false;
+
+                private void Reset()
+                {
+                    mLastToken = Type.NONE;
+                    mTemplateDepth = 0;
+                    mInFunctionBrackets = false;
+                    mInPragma = false;
+                    mInLineComments = false;
+                    // Purposely don't reset in block comments!
                 }
 
-                return 0;
+                public String InterpretLine(String line)
+                {
+                    if (String.IsNullOrEmpty(line))
+                    {
+                        return "";
+                    }
+
+                    Reset();
+
+                    StringBuilder outStr = new StringBuilder();
+
+                    var toks = line.Split(' ');
+
+                    int startIndex = CountTabs(toks[0]);
+
+                    if (startIndex > 0)
+                    {
+                        outStr.Append('\t', startIndex);
+                        toks[0] = toks[0].TrimStart();
+
+                        startIndex = String.IsNullOrEmpty(toks[0]) ? 1 : 0;
+                    }
+
+                    if (startIndex >= toks.Length)
+                    {
+                        return outStr.ToString();
+                    }
+
+                    if (toks[startIndex].CompareTo("namespace") == 0)
+                    {
+                        AppendCodeWord(outStr, "namespace", trailingSpace: false);
+
+                        if ((startIndex + 1) < toks.Length)
+                        {
+                            AppendPlain(outStr, toks[startIndex + 1], true, false);
+                            ++startIndex;
+                        }
+
+                        ++startIndex;
+                    }
+                    else if (toks[startIndex].CompareTo("#include") == 0)
+                    {
+                        AppendCodeWord(outStr, "#include");
+
+                        if ((startIndex + 1) < toks.Length)
+                        {
+                            AppendPreprocessor(outStr, toks[startIndex + 1]);
+                            ++startIndex;
+                        }
+                        
+                        ++startIndex;
+                    }
+                    else if (toks[startIndex].CompareTo("#pragma") == 0)
+                    {
+                        AppendCodeWord(outStr, "#pragma");
+
+                        if ((startIndex + 1) < toks.Length)
+                        {
+                            ++startIndex;
+                            AppendCodeWord(outStr, toks[startIndex]);
+                        }
+
+                        ++startIndex;
+                        mInPragma = true;
+                    }
+
+                    for (; startIndex < toks.Length; ++startIndex)
+                    {
+                        if (mInPragma)
+                        {
+                            AppendPlain(outStr, toks[startIndex]);
+                            continue;
+                        }
+
+                        if (mInLineComments || toks[startIndex].StartsWith("//"))
+                        {
+                            mInLineComments = true;
+
+                            AppendComments(outStr, toks[startIndex]);
+                            continue;
+                        }
+
+                        if (toks[startIndex].StartsWith("::"))
+                        {
+                            --outStr.Length;
+                            AppendPlain(outStr, toks[startIndex], trailingSpace: false);
+                            mLastToken = Type.IDENTIFIER;
+                            
+                            if (toks[startIndex].EndsWith("("))
+                            {
+                                mLastToken = Type.FUNCTION;
+                                mInFunctionBrackets = true;
+                            }
+                            continue;
+                        }
+                        
+                        if (mLastToken == Type.TYPENAME || mLastToken == Type.CLASS || mLastToken == Type.QUALIFIER ||
+                            (mLastToken == Type.FUNCTION && mInFunctionBrackets))
+                        {
+                            if (IsPrimitive(toks[startIndex]))
+                            {
+                                AppendCodeWord(outStr, toks[startIndex], trailingSpace: false);
+                            }
+                            else if (IsTypeQualifier(toks[startIndex]))
+                            {
+                                AppendCodeWord(outStr, toks[startIndex]);
+                                mLastToken = Type.QUALIFIER;
+                                continue;
+                            }
+                            else
+                            {
+                                AppendIdentifier(outStr, toks[startIndex], trailingSpace: false);
+                            }
+
+                            mLastToken = Type.IDENTIFIER;
+                        }
+                        else if (toks[startIndex][0] == '<')
+                        {
+                            if (mLastToken == Type.TEMPLATE)
+                            {
+                                outStr.Append('<');
+                            }
+                            else if ((mLastToken == Type.IDENTIFIER || mLastToken == Type.NONE))
+                            {
+                                if (outStr[outStr.Length - 1] == ' ')
+                                {
+                                    --outStr.Length;
+                                }
+
+                                if (mTemplateDepth == 0)
+                                {
+                                    mTemplateDepth = 1;
+                                }
+
+                                mLastToken = Type.TYPENAME;
+                                outStr.Append('<');
+                            }
+                            else
+                            {
+                                outStr.Append("< ");
+                            }   
+                        }
+                        else if (toks[startIndex][0] == '>')
+                        {
+                            if (mTemplateDepth > 0)
+                            {
+                                --mTemplateDepth;
+
+                                if (outStr[outStr.Length - 1] == ' ')
+                                {
+                                    --outStr.Length;
+                                }
+                            }
+
+                            outStr.Append("> ");
+                        }
+                        else if (toks[startIndex][0] == ',')
+                        {
+                            outStr.Append(", ");
+
+                            if (mTemplateDepth != 0)
+                            {
+                                mLastToken = Type.TEMPLATE;
+                            }
+                            else if (mInFunctionBrackets)
+                            {
+                                mLastToken = Type.FUNCTION;
+                            }
+                        }
+                        else if (mLastToken == Type.IDENTIFIER && mInFunctionBrackets)
+                        {
+                            if (toks[startIndex].IndexOf(')') == -1)
+                            {
+                                AppendPlain(outStr, toks[startIndex], true, false);
+                            }
+                            else
+                            {
+                                AppendPlain(outStr, toks[startIndex], trailingSpace: false);
+                            }
+                            
+                            mLastToken = Type.NONE;
+                        }
+                        else if (toks[startIndex].CompareTo("namespace") == 0)
+                        {
+                            AppendCodeWord(outStr, "namespace", trailingSpace: false);
+
+                            if ((startIndex + 1) < toks.Length)
+                            {
+                                AppendPlain(outStr, toks[startIndex + 1], true, false);
+                                ++startIndex;
+                            }
+                        }
+                        else if (toks[startIndex].CompareTo("template") == 0)
+                        {
+                            AppendCodeWord(outStr, "template");
+                            mLastToken = Type.TEMPLATE;
+                            ++mTemplateDepth;
+                        }
+                        else if (toks[startIndex].CompareTo("typename") == 0)
+                        {
+                            AppendCodeWord(outStr, "typename");
+                            mLastToken = Type.TYPENAME;
+                        }
+                        else if (toks[startIndex].CompareTo("class") == 0)
+                        {
+                            AppendCodeWord(outStr, "class");
+                            mLastToken = Type.CLASS;
+                        }
+                        else if (toks[startIndex].StartsWith("public"))
+                        {
+                            AppendCodeWord(outStr, "public:");
+                            mLastToken = Type.VISIBILITY;
+                        }
+                        else if (toks[startIndex].CompareTo("using") == 0)
+                        {
+                            AppendCodeWord(outStr, "using");
+                            mLastToken = Type.USING;
+                        }
+                        else if (toks[startIndex].EndsWith("("))
+                        {
+                            if (mLastToken == Type.IDENTIFIER && (outStr[outStr.Length - 1] == ' '))
+                            {
+                                --outStr.Length;
+                            }
+
+                            AppendPlain(outStr, toks[startIndex], trailingSpace: false);
+                            mLastToken = Type.FUNCTION;
+                            mInFunctionBrackets = true;
+                        }
+                        else if (IsTypeQualifier(toks[startIndex]))
+                        {
+                            AppendCodeWord(outStr, toks[startIndex]);
+                            mLastToken = Type.QUALIFIER;
+                        }
+                        else if (IsPrimitive(toks[startIndex]))
+                        {
+                            AppendCodeWord(outStr, toks[startIndex]);
+                            mLastToken = Type.IDENTIFIER;
+                        }
+                        else if (mTemplateDepth != 0)
+                        {
+                            AppendIdentifier(outStr, toks[startIndex]);
+                            mLastToken = Type.IDENTIFIER;
+                        }
+                        else if (toks[startIndex].IndexOfAny(new char[] { '(', ')', ';', '{', '}' }) != -1)
+                        {
+                            if (outStr.Length > 3 && outStr[outStr.Length - 1] == ' ' && 
+                                ((((outStr[outStr.Length - 2] == '>' && outStr[outStr.Length - 3] != '\\'))) ||
+                                (mLastToken == Type.IDENTIFIER && mInFunctionBrackets)))
+                            {
+                                --outStr.Length;
+                            }
+
+                            AppendUnknown(outStr, toks[startIndex]);
+                        }
+                        else
+                        {
+                            // Should be for when template types are in random places
+                            AppendIdentifier(outStr, toks[startIndex]);
+                        }
+                    }
+
+                    return outStr.ToString();
+                }
+            }
+
+            public static IParser RetrieveParser()
+            {
+                return new CPPState();
             }
         }
     }
