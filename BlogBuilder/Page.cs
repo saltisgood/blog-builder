@@ -162,12 +162,13 @@ namespace BlogBuilder
                 var img = System.Drawing.Image.FromFile(Src);
 
                 var dest = PHP.SanitiseFilename(Src, PHP.FileType.IMAGE);
-                if (!Directory.Exists("img"))
+
+                if (!Directory.Exists(Path.Combine(User.Default.DeployPath, "public_html", "blog", "img")))
                 {
-                    Directory.CreateDirectory("img");
+                    Directory.CreateDirectory(Path.Combine(User.Default.DeployPath, "public_html", "blog", "img"));
                 }
 
-                File.Copy(Src, dest, true);
+                File.Copy(Src, Path.Combine(User.Default.DeployPath, "public_html", dest), true);
 
                 writer.WriteLine("->addImage((new Image('{0}', {1}, {2}))", dest, img.Width, img.Height);
 

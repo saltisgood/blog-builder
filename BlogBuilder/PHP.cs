@@ -24,7 +24,7 @@ namespace BlogBuilder
             switch (type)
             {
                 case FileType.IMAGE:
-                    return "img/" + new Random().Next(0xFFFFFF).ToString("X") + "-" + Path.GetFileName(path).ToLowerInvariant().Replace(' ', '-');
+                    return "/blog/img/" + new Random().Next(0xFFFFFF).ToString("X") + "-" + Path.GetFileName(path).ToLowerInvariant().Replace(' ', '-');
                 default:
                     throw new ArgumentException();
             }

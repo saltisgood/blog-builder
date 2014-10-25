@@ -166,6 +166,10 @@ namespace BlogBuilder
                                 inList = true;
                                 list = new Page.List(Page.List.Type.Unordered);
                                 continue;
+                            case "ol":
+                                inList = true;
+                                list = new Page.List(Page.List.Type.Ordered);
+                                continue;
                             case "img":
                                 inImg = true;
                                 imgsec = new Page.ImageSection();
